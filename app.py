@@ -2,6 +2,7 @@ import io
 import json
 import os
 import tempfile
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,6 +10,8 @@ from typing import List
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
+from google.oauth2.service_account import Credentials
+import gspread
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -16,7 +19,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 
 # 페이지 기본 설정
-st.set_page_config(page_title="IT/OT 보안 아키텍트 AI (하이브리드)", layout="wide")
+st.set_page_config(page_title="IT/OT 보안 아키텍트 AI (하이브리드 + 시트 연동)", layout="wide")
 
 # ==========================================
 # 1. 팀원 전용 비밀번호 인증 기능
@@ -47,7 +50,51 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 2. 데이터 규격 및 시스템 프롬프트 정의
+# 2. Google Sheets 히스토리 DB 연동 함수
+# ==========================================
+def get_gsheet_worksheet():
+    """Streamlit Secrets의 서비스 계정으로 Google Sheets 첫 번째 워크시트에 연결합니다."""
+    if "gcp_service_account" not in st.secrets or "GSHEET_ID" not in st.secrets:
+        return None
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(st.secrets["GSHEET_ID"])
+        ws = sh.sheet1
+        # 첫 행 헤더가 없으면 자동 생성
+        if not ws.row_values(1):
+            ws.append_row(["Timestamp", "Project_Title", "User_Prompt", "Chat_History_JSON", "Latest_Design_JSON"])
+        return ws
+    except Exception:
+        return None
+
+def save_history_to_sheet(project_title: str, prompt_text: str, chat_history: list, latest_design_json: str):
+    ws = get_gsheet_worksheet()
+    if ws is None:
+        return False
+    try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 셀 용량(50,000자) 초과 방지를 위해 최근 6턴 대화만 저장
+        trimmed_history = json.dumps(chat_history[-6:], ensure_ascii=False)[:45000]
+        trimmed_design = latest_design_json[:48000] if latest_design_json else ""
+        ws.append_row([now_str, project_title, prompt_text[:500], trimmed_history, trimmed_design])
+        return True
+    except Exception:
+        return False
+
+def load_history_records() -> list:
+    ws = get_gsheet_worksheet()
+    if ws is None:
+        return []
+    try:
+        records = ws.get_all_records()
+        return list(reversed(records))  # 최신 작업이 맨 위로 오도록 정렬
+    except Exception:
+        return []
+
+# ==========================================
+# 3. 데이터 규격 및 시스템 프롬프트 정의
 # ==========================================
 class ComplianceItem(BaseModel):
     requirement_id: str = Field(description="RFP 요구사항 번호, 표준 조항 또는 세그멘테이션 구간")
@@ -99,7 +146,7 @@ SYSTEM_PROMPT = """
 """
 
 # ==========================================
-# 3. 헬퍼 함수 (엑셀 전처리, Mermaid, PPT 생성)
+# 4. 헬퍼 함수 (엑셀 전처리, Mermaid, PPT 생성)
 # ==========================================
 def summarize_claroty_assets(file_bytes: bytes, filename: str) -> str:
     try:
@@ -156,7 +203,6 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     WHITE = RGBColor(255, 255, 255)
     DARK_TEXT = RGBColor(30, 41, 59)
 
-    # 슬라이드 1: 요약
     s1 = prs.slides.add_slide(blank_layout)
     h1 = s1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.9))
     h1.fill.solid(); h1.fill.fore_color.rgb = NAVY; h1.line.fill.background()
@@ -176,7 +222,6 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     for zt in result.identified_zones[:6]:
         pz = tf_z.add_paragraph(); pz.text = f"• {zt}"; pz.font.size = Pt(12); pz.font.color.rgb = DARK_TEXT; pz.space_before = Pt(4)
 
-    # 슬라이드 2: 편집 가능한 구성도
     s2 = prs.slides.add_slide(blank_layout)
     h2 = s2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.75))
     h2.fill.solid(); h2.fill.fore_color.rgb = NAVY; h2.line.fill.background()
@@ -227,7 +272,6 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
                 p_e = lbl.text_frame.paragraphs[0]
                 p_e.text = edge.label; p_e.font.size = Pt(8); p_e.font.bold = True; p_e.font.color.rgb = BLUE_ACCENT; p_e.alignment = PP_ALIGN.CENTER
 
-    # 슬라이드 3: 컴플라이언스 매트릭스 표
     s3 = prs.slides.add_slide(blank_layout)
     h3 = s3.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.75))
     h3.fill.solid(); h3.fill.fore_color.rgb = NAVY; h3.line.fill.background()
@@ -253,7 +297,7 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     return out.getvalue()
 
 # ==========================================
-# 4. 좌측 사이드바: 선택형 컨트롤 패널 (솔루션, 규제, 모델)
+# 5. 좌측 사이드바: 프로젝트 히스토리 불러오기 + 선택형 컨트롤
 # ==========================================
 SOLUTIONS_LIST = [
     "없음 (신규 구축)",
@@ -283,6 +327,27 @@ SOLUTIONS_LIST = [
 ]
 
 with st.sidebar:
+    st.header("📂 프로젝트 및 히스토리")
+    project_title = st.text_input("현재 프로젝트/고객사명", value="신규 OT 보안 설계 프로젝트")
+
+    # 구글 시트에서 이전 히스토리 불러오기
+    saved_records = load_history_records()
+    if saved_records:
+        options_map = {f"[{r.get('Timestamp', '')[:16]}] {r.get('Project_Title', '무제')}": r for r in saved_records}
+        selected_hist_label = st.selectbox("Google Sheets 저장 히스토리 불러오기", ["(선택 안 함)"] + list(options_map.keys()))
+        if selected_hist_label != "(선택 안 함)" and st.button("📥 선택한 작업 불러오기", use_container_width=True):
+            rec = options_map[selected_hist_label]
+            try:
+                st.session_state["chat_history"] = json.loads(rec.get("Chat_History_JSON", "[]"))
+                st.session_state["latest_design_json"] = rec.get("Latest_Design_JSON", "")
+                st.success("이전 작업 상태를 복원했습니다! 채팅창에서 이어서 수정할 수 있습니다.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"복원 중 오류 발생: {e}")
+    else:
+        st.caption("💡 Google Sheets 연동 완료 시 작업 내역이 자동 저장됩니다.")
+
+    st.markdown("---")
     st.header("1. AI 추론 모델")
     MODEL_OPTIONS = {
         "Gemini 4 Neon (최신 프론티어 / 빠른 설계)": "gemini-4-neon",
@@ -332,16 +397,16 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    if st.button("🗑️ 대화 및 설계 초기화", use_container_width=True):
+    if st.button("🗑️ 현재 화면 대화 초기화", use_container_width=True):
         st.session_state["chat_history"] = []
         st.session_state["latest_design_json"] = None
         st.rerun()
 
 # ==========================================
-# 5. 메인 채팅 워크스페이스
+# 6. 메인 채팅 워크스페이스
 # ==========================================
 st.title("🛡️ IT/OT 보안 To-Be 아키텍트 AI (하이브리드)")
-st.caption("좌측 사이드바에서 **규제·솔루션**을 선택하고, 하단 채팅창의 **클립(📎)**으로 파일(RFP, 구성도, Claroty 자산 엑셀)을 첨부해 설계 및 수정을 지시하세요.")
+st.caption("좌측에서 **프로젝트명·규제·솔루션**을 설정하고, 하단 채팅창의 **클립(📎)**으로 파일을 첨부하면 자동 설계 및 Google Sheets 히스토리 저장이 진행됩니다.")
 
 if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
@@ -356,7 +421,7 @@ def render_design_card(result_dict: dict, msg_idx: int):
     st.download_button(
         label=f"📊 편집 가능한 PowerPoint(.pptx) 다운로드 (버전 #{msg_idx})",
         data=pptx_bytes,
-        file_name=f"IT_OT_ToBe_Architecture_v{msg_idx}.pptx",
+        file_name=f"{project_title}_ToBe_v{msg_idx}.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         key=f"dl_pptx_{msg_idx}",
         type="primary"
@@ -375,7 +440,6 @@ def render_design_card(result_dict: dict, msg_idx: int):
             st.markdown(f"- {z}")
         st.code(result_obj.mermaid_code, language="mermaid")
 
-# 기존 대화 출력
 for idx, msg in enumerate(st.session_state["chat_history"]):
     with st.chat_message(msg["role"]):
         if msg["role"] == "user":
@@ -385,7 +449,6 @@ for idx, msg in enumerate(st.session_state["chat_history"]):
         else:
             render_design_card(msg["design_data"], msg_idx=idx)
 
-# 하단 채팅 입력창
 user_msg = st.chat_input(
     "설계 요구사항을 입력하거나, 생성된 구성도의 수정 지시를 입력하세요 (좌측 선택 조건 자동 참조)...",
     accept_file="multiple",
@@ -399,7 +462,6 @@ if user_msg:
     if not text_input and not uploaded_files:
         st.stop()
 
-    # 사이드바 선택 항목 취합
     all_current = list(current_solutions)
     if custom_current.strip():
         all_current.extend([i.strip() for i in custom_current.split(",") if i.strip()])
@@ -456,6 +518,7 @@ if user_msg:
                     excel_context = "\n[첨부된 Claroty 식별 자산 인벤토리 요약]:\n" + "\n\n".join(excel_summaries) + "\n"
 
                 full_prompt = f"""
+                [프로젝트명]: {project_title}
                 [좌측 사이드바 선택 조건 (필수 반영)]
                 - 적용 규제 및 표준: {', '.join(selected_regs) if selected_regs else 'IEC 62443 기본 기준'}
                 - 현재 보유 솔루션 (As-Is): {', '.join(all_current) if all_current else '없음'}
@@ -479,13 +542,19 @@ if user_msg:
 
                 result_obj: ArchitectureDesignOutput = response.parsed
                 result_dict = result_obj.model_dump()
+                design_json_str = json.dumps(result_dict, ensure_ascii=False)
 
-                st.session_state["latest_design_json"] = json.dumps(result_dict, ensure_ascii=False)
+                st.session_state["latest_design_json"] = design_json_str
                 new_idx = len(st.session_state["chat_history"])
                 st.session_state["chat_history"].append({
                     "role": "assistant",
                     "design_data": result_dict
                 })
+
+                # Google Sheets에 자동 저장
+                saved_ok = save_history_to_sheet(project_title, display_text, st.session_state["chat_history"], design_json_str)
+                if saved_ok:
+                    st.toast("✅ Google Sheets에 설계 히스토리가 자동 저장되었습니다.")
 
                 render_design_card(result_dict, msg_idx=new_idx)
 
