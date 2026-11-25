@@ -448,10 +448,7 @@ with st.sidebar:
     st.markdown("---")
     st.header("1. AI 추론 모델")
     MODEL_OPTIONS = {
-        "Gemini 4 Neon (최신 프론티어 / 빠른 설계)": "gemini-4-neon",
         "Gemini 4 Hydrogen (멀티모달 문서·도면 분석)": "gemini-4-hydrogen",
-        "Gemini 4 Argon (심층 보안 추론·정밀 분석)": "gemini-4-argon",
-        "Gemini 4 Carbon (최상위 에이전트 - 유료 전용)": "gemini-4-carbon",
     }
     selected_model_label = st.selectbox("모델 선택", list(MODEL_OPTIONS.keys()), index=0)
     selected_model_id = MODEL_OPTIONS[selected_model_label]
@@ -642,7 +639,7 @@ if user_msg:
                 """
 
                 # 503 트래픽 폭주 대비 자동 재시도 및 보조 모델 우회(Fallback) 로직
-                all_candidates = ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-hydrogen"]
+                all_candidates = ["gemini-4-hydrogen", "gemini-4-hydrogen", "gemini-4-hydrogen"]
                 fallback_models = [selected_model_id] + [m for m in all_candidates if m != selected_model_id]
                 response = None
                 last_err = None
