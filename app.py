@@ -420,7 +420,7 @@ with st.sidebar:
     st.header("📂 프로젝트 및 히스토리")
     project_title = st.text_input("현재 프로젝트/고객사명", value="신규 OT 보안 설계 프로젝트")
 
-saved_records = load_history_records()
+    saved_records = load_history_records()
     if saved_records:
         options_map = {f"[{r.get('Timestamp', '')[:16]}] {r.get('Project_Title', '무제')}": r for r in saved_records}
         hist_labels = ["(새 프로젝트 작성)"] + list(options_map.keys())
@@ -440,6 +440,8 @@ saved_records = load_history_records()
                 st.session_state["chat_history"] = json.loads(rec.get("Chat_History_JSON", "[]"))
                 st.session_state["latest_design_json"] = rec.get("Latest_Design_JSON", "")
             st.rerun()
+    else:
+        st.caption("💡 Google Sheets 연동 완료 시 작업 내역이 자동 저장됩니다.")
 
     st.markdown("---")
     st.header("1. AI 추론 모델")
