@@ -227,8 +227,8 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     for zt in result.identified_zones[:6]:
         pz = tf_z.add_paragraph(); pz.text = f"• {zt}"; pz.font.size = Pt(12); pz.font.color.rgb = DARK_TEXT; pz.space_before = Pt(4)
 
-from pptx.enum.shapes import MSO_CONNECTOR
-    from pptx.enum.dml import MSO_LINE_DASH_STYLE
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.enum.dml import MSO_LINE_DASH_STYLE
 
     # 슬라이드 2: 편집 가능한 구성도
     s2 = prs.slides.add_slide(blank_layout)
