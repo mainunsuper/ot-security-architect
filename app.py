@@ -16,7 +16,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 
 # 페이지 기본 설정
-st.set_page_config(page_title="IT/OT 보안 아키텍트 AI (대화형)", layout="wide")
+st.set_page_config(page_title="IT/OT 보안 아키텍트 AI (하이브리드)", layout="wide")
 
 # ==========================================
 # 1. 팀원 전용 비밀번호 인증 기능
@@ -71,7 +71,7 @@ class DiagramEdge(BaseModel):
     label: str = Field(description="연결선 라벨")
 
 class ArchitectureDesignOutput(BaseModel):
-    assistant_reply: str = Field(description="사용자의 요청 또는 수정 지시에 대한 아키텍트의 친절한 답변 및 변경 내역 설명")
+    assistant_reply: str = Field(description="사용자의 요청 또는 수정 지시에 대한 아키텍트의 답변 및 반영/변경 내역 설명")
     executive_summary: str = Field(description="고객사 환경·자산 분석 및 To-Be 세그멘테이션 설계 핵심 요약")
     identified_zones: List[str] = Field(description="보안 표준 및 IP 대역 기준으로 분리된 Zone/등급 영역 목록")
     mermaid_code: str = Field(description="렌더링 가능한 순수 Mermaid.js 코드 (```mermaid 태그 제외)")
@@ -81,14 +81,17 @@ class ArchitectureDesignOutput(BaseModel):
 
 SYSTEM_PROMPT = """
 당신은 15년 이상 경력의 IT/OT 융합 보안 수석 아키텍트입니다.
-사용자와 대화하며 첨부된 파일(RFP PDF, As-Is 구성도 이미지/PDF, Claroty 식별 자산 인벤토리 요약)과 텍스트 지시사항을 바탕으로 To-Be 보안 아키텍처를 설계하고, 후속 채팅 지시에 따라 기존 설계를 정밀하게 수정합니다.
+사용자가 좌측 패널에서 선택한 [적용 규제], [기존 보유 솔루션], [도입 예정 솔루션] 조건과 채팅창으로 전달한 [첨부 파일(RFP, As-Is 구성도, Claroty 자산 엑셀 요약)] 및 [대화형 요청/수정 지시]를 모두 종합하여 최적의 To-Be 보안 아키텍처를 설계합니다.
 
 [설계 및 수정 원칙]
-1. 수정 요청 처리: 이전 단계의 설계 JSON이 함께 전달되면, 사용자가 수정을 요청한 부분(장비 추가/삭제, Zone 분리/병합, IP 대역 재배치, 연결선 변경 등)을 정확히 반영하되 나머지 검증된 구조는 일관성 있게 유지합니다. `assistant_reply`에 무엇을 어떻게 설계/수정했는지 명확히 설명합니다.
-2. Claroty 식별 자산 세그멘테이션: 자산 요약 데이터가 있으면 IP 서브넷(/24)과 용도별로 Zone을 분리하고, 노드(`asset`)에 실제 IP 대역과 대표 자산·수량을 표기합니다.
-3. OT 및 한국/국제 규제 표준:
+1. 선택 조건 + 채팅 지시 통합 반영:
+   - 좌측 패널에서 선택된 [기존 보유 솔루션]과 [도입 예정 솔루션], [적용 규제]를 반드시 설계에 반영합니다.
+   - 이전 버전 설계 JSON이 함께 전달되면, 사용자가 채팅으로 수정을 요청한 부분이나 사이드바에서 새로 변경한 솔루션/규제를 반영하여 기존 구조를 정밀하게 업데이트합니다.
+2. Claroty 식별 자산 세그멘테이션:
+   - 자산 요약 데이터가 있으면 IP 서브넷(/24)과 용도별로 Zone을 분리하고, 노드(`asset`)에 실제 IP 대역과 대표 자산·수량을 표기합니다.
+3. OT 및 한국/국제 규제 표준 배치 규칙:
    - OT 환경: Purdue Model(Level 0~4) 기준 Level 3(OT)와 Level 4(IT) 사이에 Level 3.5(IDMZ) 배치.
-   - N2SF 선택/요청 시: 기밀(C), 민감(S), 공개(O) 등급 영역 분리 및 등급 간 데이터 통제 설계.
+   - N2SF 선택 시: 기밀(C), 민감(S), 공개(O) 등급 영역 분리 및 등급 간 데이터 통제 설계.
    - Claroty CTD/xDome/Medigate는 백본 SPAN/TAP 미러링, Claroty Edge는 SPAN 불가 구간 능동 수집, Claroty SRA는 IDMZ 배치, 일방향 망연계는 OT→IT 단방향 전송으로 배치합니다.
 4. 출력 형식:
    - `mermaid_code`: `flowchart TB` 방향, 노드 ID는 영문/숫자만 사용하고 한글 라벨은 따옴표(`["한글 라벨"]`)로 감쌉니다.
@@ -250,59 +253,101 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     return out.getvalue()
 
 # ==========================================
-# 4. 좌측 사이드바: 기본 환경 설정 및 대화 초기화
+# 4. 좌측 사이드바: 선택형 컨트롤 패널 (솔루션, 규제, 모델)
 # ==========================================
+SOLUTIONS_LIST = [
+    "없음 (신규 구축)",
+    "Claroty CTD (OT 수동형 자산 가시성/위협 탐지)",
+    "Claroty xDome (클라우드 기반 OT/IoT 보안 플랫폼)",
+    "Claroty Edge (SPAN 불가 구간 능동형 자산 수집)",
+    "Claroty Medigate / xDome Healthcare (의료기기 IoMT 자산·위협 관리)",
+    "Claroty SRA / xSA (OT 전용 안전한 원격접속)",
+    "산업용 방화벽 (FortiGate Rugged / Hirschmann / Stratix)",
+    "일방향 망연계 (Data Diode - 제어망→업무망 단방향 전송)",
+    "양방향 망연계 (IDMZ 중계 및 패치/파일 전송)",
+    "산업용 L2/L3 보안 스위치 (Cisco IE / Hirschmann / Rockwell Stratix)",
+    "발전 제어망 전용 백신/화이트리스트 (Trellix / AhnLab EPS 등)",
+    "매체제어 및 휴대용 저장매체(USB) 반입통제 솔루션",
+    "발전소 엔지니어링 워크스테이션(EWS) 접근통제/PAM",
+    "의료기기 전용 마이크로 세그멘테이션 (NAC/방화벽 정책 연동)",
+    "PACS / EMR 연동 구간 전용 보안 게이트웨이",
+    "일반 IT/경계 방화벽 (Palo Alto / Fortinet / SECUI 등)",
+    "제로트러스트 네트워크 접근 (ZTNA / SDP)",
+    "IDAM / 통합계정권한관리 (IAM / PAM)",
+    "DLP / 문서중앙화 / DRM (데이터 등급별 유출방지)",
+    "망분리 VDI / 논리적·물리적 망분리 게이트웨이",
+    "WAF / 웹방화벽 및 DDoS 대응장비",
+    "클라우드 보안 (CSPM / CWPP / 클라우드 방화벽)",
+    "NAC (네트워크 접근제어)",
+    "통합로그 / SIEM / SOAR 관제 플랫폼"
+]
+
 with st.sidebar:
-    st.header("⚙️ 에이전트 기본 설정")
+    st.header("1. AI 추론 모델")
     MODEL_OPTIONS = {
         "Gemini 4 Neon (최신 프론티어 / 빠른 설계)": "gemini-4-neon",
         "Gemini 4 Hydrogen (멀티모달 문서·도면 분석)": "gemini-4-hydrogen",
         "Gemini 4 Argon (심층 보안 추론·정밀 분석)": "gemini-4-argon",
         "Gemini 4 Carbon (최상위 에이전트 - 유료 전용)": "gemini-4-carbon",
     }
-    selected_model_label = st.selectbox("AI 추론 모델", list(MODEL_OPTIONS.keys()), index=0)
+    selected_model_label = st.selectbox("모델 선택", list(MODEL_OPTIONS.keys()), index=0)
     selected_model_id = MODEL_OPTIONS[selected_model_label]
 
-    default_regs = st.multiselect(
-        "기본 적용 규제 (채팅으로도 지시 가능)",
+    st.header("2. 보안 솔루션 선택 (자동 참조)")
+    current_solutions = st.multiselect(
+        "현재 보유 솔루션 (As-Is)",
+        SOLUTIONS_LIST,
+        default=["일반 IT/경계 방화벽 (Palo Alto / Fortinet / SECUI 등)"]
+    )
+    custom_current = st.text_input("기타 보유 솔루션 직접 입력", placeholder="예: 시스코 ISE, 노후 방화벽")
+
+    planned_solutions = st.multiselect(
+        "도입 예정 솔루션 (To-Be)",
+        [s for s in SOLUTIONS_LIST if s != "없음 (신규 구축)"],
+        default=[
+            "산업용 방화벽 (FortiGate Rugged / Hirschmann / Stratix)",
+            "Claroty CTD (OT 수동형 자산 가시성/위협 탐지)",
+            "Claroty SRA / xSA (OT 전용 안전한 원격접속)"
+        ]
+    )
+    custom_planned = st.text_input("기타 도입 솔루션 직접 입력", placeholder="예: 자사 특화 관제, 신규 IDS")
+
+    st.header("3. 적용 규제 및 표준 선택")
+    selected_regs = st.multiselect(
+        "보안 표준 / 규제 (IT · OT · 한국 특화)",
         [
-            "IEC 62443-3-3 (SL-2)",
-            "IEC 62443-3-3 (SL-3)",
+            "IEC 62443-3-3 (SL-2 / 산업제어시스템 보안)",
+            "IEC 62443-3-3 (SL-3 / 고위험 기반시설)",
             "N2SF (국가 망 보안체계 - C/S/O 등급 분리)",
-            "ISO/IEC 27001",
-            "ISMS-P",
+            "ISO/IEC 27001 (정보보호 경영시스템)",
+            "ISMS-P (정보보호 및 개인정보보호 관리체계)",
             "국내 주요정보통신기반시설 보호지침",
-            "제로트러스트 가이드라인 2.0",
-            "NIS2 Directive",
-            "IAEA NSS 17-T",
-            "의료법 / 의료기기 사이버보안 가이드라인"
+            "제로트러스트 가이드라인 2.0 (과기정통부/KISA)",
+            "전자금융감독규정 / 금융보안원 가이드라인",
+            "NIS2 Directive (EU 네트워크 및 정보보안 지침)",
+            "IAEA NSS 17-T (원자력/발전 설비 사이버보안)",
+            "의료법 / 의료기기 사이버보안 허가·심사 가이드라인"
         ],
-        default=["IEC 62443-3-3 (SL-2)", "국내 주요정보통신기반시설 보호지침"]
+        default=["IEC 62443-3-3 (SL-2 / 산업제어시스템 보안)", "국내 주요정보통신기반시설 보호지침"]
     )
 
     st.markdown("---")
-    st.markdown("""
-    **💡 채팅 활용 예시**
-    - *초기 설계:* RFP PDF와 Claroty 자산 엑셀을 첨부하고 *"Claroty CTD, SRA, 일방향 망연계를 반영해서 To-Be 구성도 그려줘"*
-    - *구성도 수정:* *"IDMZ에 점프 호스트 추가하고, 10.10.20.0/24 대역을 별도 PLC Zone으로 분리해 줘"*
-    """)
-    if st.button("🗑️ 새 대화 시작 (초기화)", use_container_width=True):
+    if st.button("🗑️ 대화 및 설계 초기화", use_container_width=True):
         st.session_state["chat_history"] = []
         st.session_state["latest_design_json"] = None
         st.rerun()
 
 # ==========================================
-# 5. 메인 채팅 화면 및 상태 관리
+# 5. 메인 채팅 워크스페이스
 # ==========================================
-st.title("🛡️ IT/OT 보안 To-Be 아키텍트 AI (대화형)")
-st.caption("하단 채팅창의 클립(📎) 아이콘으로 RFP(PDF), As-Is 구성도(이미지/PDF), Claroty 자산(XLSX/CSV)을 첨부하고 요구사항을 입력하세요.")
+st.title("🛡️ IT/OT 보안 To-Be 아키텍트 AI (하이브리드)")
+st.caption("좌측 사이드바에서 **규제·솔루션**을 선택하고, 하단 채팅창의 **클립(📎)**으로 파일(RFP, 구성도, Claroty 자산 엑셀)을 첨부해 설계 및 수정을 지시하세요.")
 
 if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
 if "latest_design_json" not in st.session_state:
     st.session_state["latest_design_json"] = None
 
-# 결과 렌더링 헬퍼
 def render_design_card(result_dict: dict, msg_idx: int):
     result_obj = ArchitectureDesignOutput(**result_dict)
     st.markdown(result_obj.assistant_reply)
@@ -330,7 +375,7 @@ def render_design_card(result_dict: dict, msg_idx: int):
             st.markdown(f"- {z}")
         st.code(result_obj.mermaid_code, language="mermaid")
 
-# 기존 대화 기록 출력
+# 기존 대화 출력
 for idx, msg in enumerate(st.session_state["chat_history"]):
     with st.chat_message(msg["role"]):
         if msg["role"] == "user":
@@ -340,9 +385,9 @@ for idx, msg in enumerate(st.session_state["chat_history"]):
         else:
             render_design_card(msg["design_data"], msg_idx=idx)
 
-# 하단 다중 파일 첨부 가능 채팅 입력창
+# 하단 채팅 입력창
 user_msg = st.chat_input(
-    "설계할 환경·솔루션을 입력하거나, 생성된 구성도의 수정 사항을 지시하세요...",
+    "설계 요구사항을 입력하거나, 생성된 구성도의 수정 지시를 입력하세요 (좌측 선택 조건 자동 참조)...",
     accept_file="multiple",
     file_type=["pdf", "png", "jpg", "jpeg", "xlsx", "csv"]
 )
@@ -354,10 +399,18 @@ if user_msg:
     if not text_input and not uploaded_files:
         st.stop()
 
-    file_names = [f.name for f in uploaded_files]
-    display_text = text_input if text_input else "첨부된 파일을 분석하여 최적의 To-Be 보안 아키텍처를 설계해 주세요."
+    # 사이드바 선택 항목 취합
+    all_current = list(current_solutions)
+    if custom_current.strip():
+        all_current.extend([i.strip() for i in custom_current.split(",") if i.strip()])
 
-    # 사용자 메시지 화면 표시 및 기록
+    all_planned = list(planned_solutions)
+    if custom_planned.strip():
+        all_planned.extend([i.strip() for i in custom_planned.split(",") if i.strip()])
+
+    file_names = [f.name for f in uploaded_files]
+    display_text = text_input if text_input else "좌측에 선택한 솔루션·규제 조건과 첨부 파일을 바탕으로 To-Be 아키텍처를 설계해 주세요."
+
     with st.chat_message("user"):
         if file_names:
             st.caption("📎 첨부 파일: " + ", ".join(file_names))
@@ -381,7 +434,7 @@ if user_msg:
 
     with st.chat_message("assistant"):
         try:
-            with st.spinner("첨부 파일 분석 및 아키텍처 설계/수정 중..."):
+            with st.spinner("사이드바 선택 조건 및 첨부 파일 분석 중..."):
                 for uf in uploaded_files:
                     fname = uf.name
                     fbytes = uf.getvalue()
@@ -394,20 +447,23 @@ if user_msg:
                             temp_paths.append(tmp.name)
                         gemini_files.append(client.files.upload(file=temp_paths[-1]))
 
-                # 이전 설계 상태가 있으면 컨텍스트로 함께 전달 (대화형 수정 지원)
                 prev_context = ""
                 if st.session_state["latest_design_json"]:
-                    prev_context = f"\n[현재까지 완성된 이전 버전 To-Be 설계 JSON (사용자의 수정 요청 시 이 구조를 기반으로 업데이트할 것)]:\n{st.session_state['latest_design_json']}\n"
+                    prev_context = f"\n[이전 버전 To-Be 설계 JSON (수정 요청 또는 변경된 사이드바 조건을 이 구조에 반영할 것)]:\n{st.session_state['latest_design_json']}\n"
 
                 excel_context = ""
                 if excel_summaries:
                     excel_context = "\n[첨부된 Claroty 식별 자산 인벤토리 요약]:\n" + "\n\n".join(excel_summaries) + "\n"
 
                 full_prompt = f"""
-                - 기본 선택 규제: {', '.join(default_regs) if default_regs else 'IEC 62443 기본 기준'}
+                [좌측 사이드바 선택 조건 (필수 반영)]
+                - 적용 규제 및 표준: {', '.join(selected_regs) if selected_regs else 'IEC 62443 기본 기준'}
+                - 현재 보유 솔루션 (As-Is): {', '.join(all_current) if all_current else '없음'}
+                - 도입 예정 솔루션 (To-Be): {', '.join(all_planned) if all_planned else '규제 충족에 필요한 표준 솔루션 자동 추천'}
                 {prev_context}
                 {excel_context}
-                - 사용자 요청/수정 지시사항: {display_text}
+                [사용자 채팅 지시사항]
+                - {display_text}
                 """
 
                 response = client.models.generate_content(
@@ -424,7 +480,6 @@ if user_msg:
                 result_obj: ArchitectureDesignOutput = response.parsed
                 result_dict = result_obj.model_dump()
 
-                # 최신 설계 상태 저장 (다음 턴 수정용)
                 st.session_state["latest_design_json"] = json.dumps(result_dict, ensure_ascii=False)
                 new_idx = len(st.session_state["chat_history"])
                 st.session_state["chat_history"].append({
