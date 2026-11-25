@@ -108,7 +108,7 @@ class DiagramNode(BaseModel):
     node_id: str = Field(description="영문 고유 ID (예: FW_OT, CLAROTY_CTD)")
     label: str = Field(description="도형 안에 표시될 짧은 장비/자산군 이름")
     node_type: str = Field(description="장비 유형: 'security'(보안솔루션), 'network'(방화벽/스위치/망연계), 'asset'(식별된 IP대역 자산군/서버/설비) 중 택1")
-    icon_type: str = Field(description="아이콘 유형: 'firewall'(방화벽/스위치), 'diode'(일방향망연계), 'sensor'(Claroty CTD/xDome/Medigate/Edge), 'remote'(SRA/ZTNA/점프호스트), 'endpoint'(백신/매체제어/PAM), 'plc'(PLC/RTU/의료기기), 'server'(SCADA/HMI/업무서버/클라우드) 중 택1")
+    icon_type: str = Field(default="server", description="아이콘 유형: 'firewall'(방화벽/스위치), 'diode'(일방향망연계), 'sensor'(Claroty CTD/xDome/Medigate/Edge), 'remote'(SRA/ZTNA/점프호스트), 'endpoint'(백신/매체제어/PAM), 'plc'(PLC/RTU/의료기기), 'server'(SCADA/HMI/업무서버/클라우드) 중 택1")
 
 class DiagramZone(BaseModel):
     zone_name: str = Field(description="계층/세그먼트 구역 이름")
