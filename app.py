@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import os
@@ -176,16 +177,18 @@ def summarize_claroty_assets(file_bytes: bytes, filename: str) -> str:
         return f"[{filename}] 엑셀 파싱 참고 오류: {e}"
 
 def render_mermaid(code: str, key_suffix: str):
-    html_code = f"""
-    <div id="mmd_{key_suffix}" class="mermaid" style="background-color: white; padding: 16px; border-radius: 10px;">
-        {code}
-    </div>
-    <script type="module">
-        import mermaid from '[https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs](https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs)';
-        mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
-    </script>
-    """
-    components.html(html_code, height=520, scrolling=True)
+    # 1. 제미나이가 실수로 넣을 수 있는 마크다운 코드블록 태그 제거
+    clean_code = code.replace("```mermaid", "").replace("```", "").strip()
+    
+    # 2. mermaid.ink를 이용해 실제 이미지(SVG) URL 생성 (브라우저 JS 오류 원천 차단)
+    encoded = base64.urlsafe_b64encode(clean_code.encode("utf-8")).decode("ascii")
+    svg_url = f"https://mermaid.ink/svg/{encoded}"
+    
+    st.markdown(f"![To-Be 보안 아키텍처 구성도]({svg_url})")
+    
+    with st.expander("🔍 만약 위 그림이 깨져 보인다면? (원본 코드 확인)"):
+        st.caption("문법 오류 시 아래 코드를 복사해 mermaid.live에 붙여넣으면 어느 줄이 잘못되었는지 바로 확인할 수 있습니다.")
+        st.code(clean_code, language="mermaid")
 
 def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     prs = Presentation()
