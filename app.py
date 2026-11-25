@@ -420,22 +420,26 @@ with st.sidebar:
     st.header("📂 프로젝트 및 히스토리")
     project_title = st.text_input("현재 프로젝트/고객사명", value="신규 OT 보안 설계 프로젝트")
 
-    # 구글 시트에서 이전 히스토리 불러오기
-    saved_records = load_history_records()
+saved_records = load_history_records()
     if saved_records:
         options_map = {f"[{r.get('Timestamp', '')[:16]}] {r.get('Project_Title', '무제')}": r for r in saved_records}
-        selected_hist_label = st.selectbox("Google Sheets 저장 히스토리 불러오기", ["(선택 안 함)"] + list(options_map.keys()))
-        if selected_hist_label != "(선택 안 함)" and st.button("📥 선택한 작업 불러오기", use_container_width=True):
-            rec = options_map[selected_hist_label]
-            try:
+        hist_labels = ["(새 프로젝트 작성)"] + list(options_map.keys())
+        
+        current_label = st.session_state.get("current_loaded_hist", "(새 프로젝트 작성)")
+        default_idx = hist_labels.index(current_label) if current_label in hist_labels else 0
+
+        selected_hist_label = st.selectbox("📂 저장된 히스토리 바로보기", hist_labels, index=default_idx)
+
+        if selected_hist_label != current_label:
+            st.session_state["current_loaded_hist"] = selected_hist_label
+            if selected_hist_label == "(새 프로젝트 작성)":
+                st.session_state["chat_history"] = []
+                st.session_state["latest_design_json"] = None
+            else:
+                rec = options_map[selected_hist_label]
                 st.session_state["chat_history"] = json.loads(rec.get("Chat_History_JSON", "[]"))
                 st.session_state["latest_design_json"] = rec.get("Latest_Design_JSON", "")
-                st.success("이전 작업 상태를 복원했습니다! 채팅창에서 이어서 수정할 수 있습니다.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"복원 중 오류 발생: {e}")
-    else:
-        st.caption("💡 Google Sheets 연동 완료 시 작업 내역이 자동 저장됩니다.")
+            st.rerun()
 
     st.markdown("---")
     st.header("1. AI 추론 모델")
@@ -498,8 +502,22 @@ with st.sidebar:
 st.title("🛡️ IT/OT 보안 To-Be 아키텍트 AI (하이브리드)")
 st.caption("좌측에서 **프로젝트명·규제·솔루션**을 설정하고, 하단 채팅창의 **클립(📎)**으로 파일을 첨부하면 자동 설계 및 Google Sheets 히스토리 저장이 진행됩니다.")
 
+# 세션 초기화 시 Google Sheets의 가장 최근 히스토리 자동 복원
 if "chat_history" not in st.session_state:
-    st.session_state["chat_history"] = []
+    recent_records = load_history_records()
+    if recent_records:
+        try:
+            latest_rec = recent_records[0]
+            st.session_state["chat_history"] = json.loads(latest_rec.get("Chat_History_JSON", "[]"))
+            st.session_state["latest_design_json"] = latest_rec.get("Latest_Design_JSON", "")
+            st.session_state["current_loaded_hist"] = f"[{latest_rec.get('Timestamp', '')[:16]}] {latest_rec.get('Project_Title', '무제')}"
+        except Exception:
+            st.session_state["chat_history"] = []
+            st.session_state["latest_design_json"] = None
+    else:
+        st.session_state["chat_history"] = []
+        st.session_state["latest_design_json"] = None
+
 if "latest_design_json" not in st.session_state:
     st.session_state["latest_design_json"] = None
 
