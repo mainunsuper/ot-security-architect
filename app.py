@@ -638,16 +638,24 @@ if user_msg:
                 - {display_text}
                 """
 
-                # 503 트래픽 폭주 대비 자동 재시도 및 보조 모델 우회(Fallback) 로직
-                all_candidates = ["gemini-4-hydrogen", "gemini-4-hydrogen", "gemini-4-hydrogen"]
+                # 503 트래픽 폭주 대비 점진적 재시도(Backoff) 및 안정화 모델 우회 로직
+                all_candidates = [
+                    "gemini-4-hydrogen",
+                    "gemini-4-hydrogen",
+                    "gemini-2.5-flash",
+                ]
                 fallback_models = [selected_model_id] + [m for m in all_candidates if m != selected_model_id]
+                # 동일 모델 연속 재시도 보장
+                if selected_model_id == "gemini-4-hydrogen":
+                    fallback_models = ["gemini-4-hydrogen", "gemini-4-hydrogen", "gemini-2.5-flash"]
+
                 response = None
                 last_err = None
 
                 for idx_m, m_id in enumerate(fallback_models):
                     try:
                         if idx_m > 0:
-                            st.info(f"⏳ 선택 모델 트래픽 혼잡으로 보조 모델(`{m_id}`)로 자동 전환합니다...")
+                            st.info(f"⏳ 서버 혼잡으로 재시도/보조 모델(`{m_id}`)로 자동 전환하여 진행합니다... ({idx_m}회차)")
                         response = client.models.generate_content(
                             model=m_id,
                             contents=gemini_files + [full_prompt],
@@ -661,8 +669,9 @@ if user_msg:
                         break
                     except Exception as api_err:
                         last_err = api_err
-                        if "503" in str(api_err) or "UNAVAILABLE" in str(api_err) or "429" in str(api_err):
-                            time.sleep(2)
+                        err_msg = str(api_err)
+                        if any(code in err_msg for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"]):
+                            time.sleep(2 * (idx_m + 1))  # 2초 -> 4초 -> 6초 점진적 대기
                             continue
                         raise api_err
 
