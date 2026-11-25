@@ -429,7 +429,22 @@ SOLUTIONS_LIST = [
     "NAC (네트워크 접근제어)",
     "통합로그 / SIEM / SOAR 관제 플랫폼"
 ]
-
+with st.sidebar:
+    st.header("0. AI 추론 엔진(모델) 선택")
+    MODEL_OPTIONS = {
+        "Gemini 4 Neon (최신 프론티어 / 빠른 복합 아키텍처 설계)": "gemini-4-neon",
+        "Gemini 4 Hydrogen (멀티모달 문서·도면 고속 분석)": "gemini-4-hydrogen",
+        "Gemini 4 Argon (심층 보안 추론·정밀 분석)": "gemini-4-argon",
+        "Gemini 4 Carbon (최상위 에이전트 - 유료 API 전용)": "gemini-4-carbon",
+    }
+    selected_model_label = st.selectbox(
+        "사용할 Gemini 4 모델",
+        list(MODEL_OPTIONS.keys()),
+        index=0,
+        help="무료 API 키 사용 시 Neon, Hydrogen, Argon을 선택하세요. Carbon은 유료 결제(Paid) 등록 키가 필요합니다."
+    )
+    selected_model_id = MODEL_OPTIONS[selected_model_label]
+    
 with st.sidebar:
     st.header("1. 분석 자료 및 Claroty 자산 업로드")
     rfp_file = st.file_uploader("고객사 RFP 또는 요구사항 문서 (PDF)", type=["pdf"])
@@ -533,7 +548,7 @@ if run_btn:
             contents = uploaded_gemini_files + [prompt]
 
             response = client.models.generate_content(
-                model="gemini-2.5-pro",
+                model=selected_model_id,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
