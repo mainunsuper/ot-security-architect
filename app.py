@@ -75,10 +75,6 @@ def get_gsheet_worksheet():
     except Exception as e:
         st.error(f"Google Sheets 연결 오류: {e}")
         return None
-        
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 
 def save_history_to_sheet(project_title: str, prompt_text: str, chat_history: list, latest_design_json: str):
     ws = get_gsheet_worksheet()
@@ -91,9 +87,6 @@ def save_history_to_sheet(project_title: str, prompt_text: str, chat_history: li
         trimmed_design = latest_design_json[:48000] if latest_design_json else ""
         ws.append_row([now_str, project_title, prompt_text[:500], trimmed_history, trimmed_design])
         load_history_records.clear()  # 저장 직후 사이드바 목록 캐시 즉시 갱신
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return True
     except Exception as e:
         st.error(f"Google Sheets 저장 실패 원인: {e}")
@@ -104,8 +97,13 @@ def load_history_records() -> list:
     if "gcp_service_account" not in st.secrets or "GSHEET_ID" not in st.secrets:
         return []
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(st.secrets["GSHEET_ID"])
         ws = sh.sheet1
