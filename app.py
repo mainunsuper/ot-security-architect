@@ -275,4 +275,14 @@ if run_btn:
             st.code(result.mermaid_code, language="mermaid")
 
     except Exception as e:
-        st.
+        st.error(f"오류가 발생했습니다: {e}")
+
+    finally:
+        for gf in uploaded_gemini_files:
+            try:
+                client.files.delete(name=gf.name)
+            except Exception:
+                pass
+        for tp in temp_paths:
+            if os.path.exists(tp):
+                os.remove(tp)
