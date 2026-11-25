@@ -132,20 +132,20 @@ with st.sidebar:
     
     st.header("2. 보안 솔루션 구성 선택")
     current_solutions = st.multiselect(
-        "현재 구성되어 있는 보안 솔루션 (As-Is)",
-        OT_SOLUTIONS_LIST,
-        default=["일반 IT 방화벽 (Palo Alto / Fortinet 등)"],
-        help="고객사 현장에 이미 도입되어 운영 중인 솔루션을 선택하세요."
+    "현재 구성되어 있는 보안 솔루션 (As-Is)",
+    OT_SOLUTIONS_LIST,
+    default=["일반 IT/경계 방화벽 (Palo Alto / Fortinet 등)"],
+    help="고객사 현장에 이미 도입되어 운영 중인 솔루션을 선택하세요."
     )
     planned_solutions = st.multiselect(
-        "도입 예정인 보안 솔루션 (To-Be)",
-        [s for s in OT_SOLUTIONS_LIST if s != "없음 (신규 구축)"],
-        default=[
-            "산업용 방화벽 (FortiGate Rugged / Hirschmann 등)",
-            "OT 자산 가시성/위협 탐지 (Claroty CTD / xDome)",
-            "OT 안전한 원격접속 (Claroty SRA / Jump Host)"
-        ],
-        help="이번 사업을 통해 신규 도입하거나 제안할 솔루션을 선택하세요."
+    "도입 예정인 보안 솔루션 (To-Be)",
+    [s for s in OT_SOLUTIONS_LIST if s != "없음 (신규 구축)"],
+    default=[
+        "산업용 방화벽 (FortiGate Rugged / Hirschmann / Stratix)",
+        "Claroty CTD (OT 수동형 자산 가시성/위협 탐지)",
+        "Claroty SRA / xSA (OT 전용 안전한 원격접속)"
+    ],
+    help="이번 사업을 통해 신규 도입하거나 제안할 솔루션을 선택하세요."
     )
 
     st.header("3. 규제 및 추가 요건")
