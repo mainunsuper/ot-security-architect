@@ -671,12 +671,10 @@ if user_msg:
                 all_candidates = [
                     "gemini-4-hydrogen",
                     "gemini-4-hydrogen",
-                    "gemini-2.5-flash",
-                ]
+                    "gemini-3.8-flash"]
                 fallback_models = [selected_model_id] + [m for m in all_candidates if m != selected_model_id]
-                # 동일 모델 연속 재시도 보장
                 if selected_model_id == "gemini-4-hydrogen":
-                    fallback_models = ["gemini-4-hydrogen", "gemini-4-hydrogen", "gemini-2.5-flash"]
+                    fallback_models = ["gemini-4-hydrogen", "gemini-4-hydrogen", "gemini-3.8-flash"]
 
                 response = None
                 last_err = None
