@@ -640,17 +640,16 @@ if user_msg:
                 - {display_text}
                 """
 
-                response = client.models.generate_content(
-                    fallback_models = [selected_model_id] + [
-                    m for m in ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-argon"] if m != selected_model_id
-                ]
+                # 503 트래픽 폭주 대비 자동 재시도 및 보조 모델 우회(Fallback) 로직
+                all_candidates = ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-argon"]
+                fallback_models = [selected_model_id] + [m for m in all_candidates if m != selected_model_id]
                 response = None
                 last_err = None
 
                 for idx_m, m_id in enumerate(fallback_models):
                     try:
                         if idx_m > 0:
-                            st.info(f"⏳ 선택 모델 트래픽 혼잡으로 보조 모델(`{m_id}`)로 자동 전환하여 계속 진행합니다...")
+                            st.info(f"⏳ 선택 모델 트래픽 혼잡으로 보조 모델(`{m_id}`)로 자동 전환합니다...")
                         response = client.models.generate_content(
                             model=m_id,
                             contents=gemini_files + [full_prompt],
@@ -671,7 +670,6 @@ if user_msg:
 
                 if response is None:
                     raise last_err
-                )
 
                 result_obj: ArchitectureDesignOutput = response.parsed
                 result_dict = result_obj.model_dump()
