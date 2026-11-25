@@ -84,7 +84,8 @@ def save_history_to_sheet(project_title: str, prompt_text: str, chat_history: li
         return True
     except Exception:
         return False
-
+        
+@st.cache_data(ttl=60)
 def load_history_records() -> list:
     ws = get_gsheet_worksheet()
     if ws is None:
