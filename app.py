@@ -56,20 +56,24 @@ if not check_password():
 # 2. Google Sheets 히스토리 DB 연동 함수
 # ==========================================
 def get_gsheet_worksheet():
-    """Streamlit Secrets의 서비스 계정으로 Google Sheets 첫 번째 워크시트에 연결합니다."""
     if "gcp_service_account" not in st.secrets or "GSHEET_ID" not in st.secrets:
         return None
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(st.secrets["GSHEET_ID"])
         ws = sh.sheet1
-        # 첫 행 헤더가 없으면 자동 생성
         if not ws.row_values(1):
             ws.append_row(["Timestamp", "Project_Title", "User_Prompt", "Chat_History_JSON", "Latest_Design_JSON"])
         return ws
-    except Exception:
+    except Exception as e:
+        st.error(f"Google Sheets 연결 오류: {e}")
         return None
         
         creds_dict = dict(st.secrets["gcp_service_account"])
