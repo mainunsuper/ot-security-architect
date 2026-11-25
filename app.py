@@ -118,6 +118,7 @@ class DiagramEdge(BaseModel):
     source_id: str = Field(description="출발 노드 node_id")
     target_id: str = Field(description="도착 노드 node_id")
     label: str = Field(description="연결선 라벨")
+    link_type: str = Field(default="it_1g", description="통신 유형 및 대역폭 구분: 'backbone_10g'(10G 백본/업링크), 'it_1g'(1G IT 업무/관리 통신), 'ot_control'(OT 제어/설비 프로토콜 통신), 'span_mirror'(SPAN/TAP 수동 미러링), 'unidirectional'(일방향 망연계/SRA 통제 격리) 중 택1")
 
 class ArchitectureDesignOutput(BaseModel):
     assistant_reply: str = Field(description="사용자의 요청 또는 수정 지시에 대한 아키텍트의 답변 및 반영/변경 내역 설명")
@@ -226,44 +227,65 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     for zt in result.identified_zones[:6]:
         pz = tf_z.add_paragraph(); pz.text = f"• {zt}"; pz.font.size = Pt(12); pz.font.color.rgb = DARK_TEXT; pz.space_before = Pt(4)
 
+from pptx.enum.shapes import MSO_CONNECTOR
+    from pptx.enum.dml import MSO_LINE_DASH_STYLE
+
+    # 슬라이드 2: 편집 가능한 구성도
     s2 = prs.slides.add_slide(blank_layout)
-    h2 = s2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.75))
+    h2 = s2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.68))
     h2.fill.solid(); h2.fill.fore_color.rgb = NAVY; h2.line.fill.background()
-    h2.text_frame.text = "  2. To-Be 보안 아키텍처 구성도 (모든 도형/선 개별 편집 가능)"
-    h2.text_frame.paragraphs[0].font.size = Pt(20); h2.text_frame.paragraphs[0].font.bold = True; h2.text_frame.paragraphs[0].font.color.rgb = WHITE
+    h2.text_frame.text = "  2. To-Be 보안 아키텍처 구성도 (직각 꺾은선 · 통신유형 구분 · 개별 편집 가능)"
+    h2.text_frame.paragraphs[0].font.size = Pt(18); h2.text_frame.paragraphs[0].font.bold = True; h2.text_frame.paragraphs[0].font.color.rgb = WHITE
+
+    # 우측 상단 통신유형 범례(Legend) 바 추가
+    LINK_STYLES = {
+        "backbone_10g":   (RGBColor(15, 23, 42),   Pt(2.5),  MSO_LINE_DASH_STYLE.SOLID,    "━ 10G 백본"),
+        "it_1g":          (RGBColor(37, 99, 235),  Pt(1.5),  MSO_LINE_DASH_STYLE.SOLID,    "━ 1G IT통신"),
+        "ot_control":     (RGBColor(5, 150, 105),  Pt(1.75), MSO_LINE_DASH_STYLE.SOLID,    "━ OT 제어망"),
+        "span_mirror":    (RGBColor(124, 58, 237), Pt(1.5),  MSO_LINE_DASH_STYLE.DASH,     "┄ SPAN 미러링"),
+        "unidirectional": (RGBColor(234, 88, 12),  Pt(1.75), MSO_LINE_DASH_STYLE.SYS_DOT,  "┈ 일방향/통제"),
+    }
+    leg_x = 5.4
+    for _, (l_rgb, _, _, l_txt) in LINK_STYLES.items():
+        l_box = s2.shapes.add_textbox(Inches(leg_x), Inches(0.72), Inches(1.52), Inches(0.28))
+        p_lg = l_box.text_frame.paragraphs[0]
+        p_lg.text = l_txt
+        p_lg.font.size = Pt(8.5)
+        p_lg.font.bold = True
+        p_lg.font.color.rgb = l_rgb
+        leg_x += 1.54
 
     zones = result.ppt_zones[:5]
     num_zones = max(len(zones), 1)
-    start_y, total_h, gap_y = 1.15, 6.05, 0.14
+    start_y, total_h, gap_y = 1.05, 6.20, 0.22  # 꺾은선 여백을 위해 층간 간격(gap_y) 확보
     zone_h = (total_h - gap_y * (num_zones - 1)) / num_zones
-    node_centers = {}
+    node_anchors = {}  # 상/하/좌/우 테두리 앵커 좌표 저장
+
+    ICON_STYLES = {
+        "firewall": (MSO_SHAPE.OCTAGON,           RGBColor(194, 65, 12),  "FW",    RGBColor(251, 146, 60)),
+        "diode":    (MSO_SHAPE.RIGHT_ARROW,       RGBColor(3, 105, 161),  "1-WAY", RGBColor(56, 189, 248)),
+        "sensor":   (MSO_SHAPE.HEXAGON,           RGBColor(13, 128, 101), "MON",   RGBColor(52, 211, 153)),
+        "remote":   (MSO_SHAPE.ROUNDED_RECTANGLE, RGBColor(109, 40, 217), "SRA",   RGBColor(192, 132, 252)),
+        "endpoint": (MSO_SHAPE.PLAQUE,            RGBColor(15, 118, 110), "EPP",   RGBColor(45, 212, 191)),
+        "plc":      (MSO_SHAPE.BEVEL,             RGBColor(71, 85, 105),  "OT",    RGBColor(148, 163, 184)),
+        "server":   (MSO_SHAPE.RECTANGLE,         RGBColor(51, 65, 85),   "SRV",   RGBColor(148, 163, 184)),
+    }
 
     for idx, zone in enumerate(zones):
         zy = start_y + idx * (zone_h + gap_y)
         zb = s2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(zy), Inches(12.53), Inches(zone_h))
         zb.fill.solid(); zb.fill.fore_color.rgb = ZONE_BG; zb.line.color.rgb = ZONE_BORDER; zb.line.width = Pt(1.2)
 
-        zl = s2.shapes.add_textbox(Inches(0.5), Inches(zy + 0.05), Inches(2.3), Inches(zone_h - 0.1))
+        zl = s2.shapes.add_textbox(Inches(0.5), Inches(zy + 0.05), Inches(2.25), Inches(zone_h - 0.1))
         zl.text_frame.word_wrap = True
-        zl.text_frame.paragraphs[0].text = zone.zone_name; zl.text_frame.paragraphs[0].font.size = Pt(11); zl.text_frame.paragraphs[0].font.bold = True; zl.text_frame.paragraphs[0].font.color.rgb = NAVY
+        zl.text_frame.paragraphs[0].text = zone.zone_name; zl.text_frame.paragraphs[0].font.size = Pt(10.5); zl.text_frame.paragraphs[0].font.bold = True; zl.text_frame.paragraphs[0].font.color.rgb = NAVY
 
         nodes = zone.nodes[:5]
         n_count = max(len(nodes), 1)
-        area_x, area_w, gap_x = 2.9, 9.8, 0.25
-        node_w = min(2.1, (area_w - gap_x * (n_count - 1)) / n_count)
-        node_h = min(0.72, zone_h - 0.20)
+        area_x, area_w, gap_x = 2.85, 9.85, 0.35  # 수평 연결선 여백 확보
+        node_w = min(2.05, (area_w - gap_x * (n_count - 1)) / n_count)
+        node_h = min(0.68, zone_h - 0.22)
         node_y = zy + (zone_h - node_h) / 2
-
-# 아이콘 유형별 스타일 매핑 테이블 (도형모양, 배경색, 배지텍스트, 배지색상)
-        ICON_STYLES = {
-            "firewall": (MSO_SHAPE.OCTAGON, RGBColor(194, 65, 12), "FW", RGBColor(251, 146, 60)),
-            "diode":    (MSO_SHAPE.RIGHT_ARROW, RGBColor(3, 105, 161), "1-WAY", RGBColor(56, 189, 248)),
-            "sensor":   (MSO_SHAPE.HEXAGON, RGBColor(13, 128, 101), "MON", RGBColor(52, 211, 153)),
-            "remote":   (MSO_SHAPE.ROUNDED_RECTANGLE, RGBColor(109, 40, 217), "SRA", RGBColor(192, 132, 252)),
-            "endpoint": (MSO_SHAPE.PLAQUE, RGBColor(15, 118, 110), "EPP", RGBColor(45, 212, 191)),
-            "plc":      (MSO_SHAPE.BEVEL, RGBColor(71, 85, 105), "OT", RGBColor(148, 163, 184)),
-            "server":   (MSO_SHAPE.RECTANGLE, RGBColor(51, 65, 85), "SRV", RGBColor(148, 163, 184)),
-        }
 
         for n_idx, node in enumerate(nodes):
             nx = area_x + n_idx * (node_w + gap_x)
@@ -272,48 +294,82 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
                 (MSO_SHAPE.ROUNDED_RECTANGLE, SLATE_ASSET, "SYS", ZONE_BORDER)
             )
 
-            # 메인 장비 도형
-            ns = s2.shapes.add_shape(shape_type, Inches(nx), Inches(node_y + 0.06), Inches(node_w), Inches(node_h - 0.06))
-            ns.fill.solid()
-            ns.fill.fore_color.rgb = fill_rgb
-            ns.line.color.rgb = WHITE
-            ns.line.width = Pt(1.2)
+            ns = s2.shapes.add_shape(shape_type, Inches(nx), Inches(node_y + 0.05), Inches(node_w), Inches(node_h - 0.05))
+            ns.fill.solid(); ns.fill.fore_color.rgb = fill_rgb
+            ns.line.color.rgb = WHITE; ns.line.width = Pt(1.2)
             ns.text_frame.word_wrap = True
             p_n = ns.text_frame.paragraphs[0]
-            p_n.text = node.label
-            p_n.font.size = Pt(9)
-            p_n.font.bold = True
-            p_n.font.color.rgb = WHITE
-            p_n.alignment = PP_ALIGN.CENTER
+            p_n.text = node.label; p_n.font.size = Pt(8.5); p_n.font.bold = True; p_n.font.color.rgb = WHITE; p_n.alignment = PP_ALIGN.CENTER
 
-            # 좌측 상단 특징 아이콘 배지 (원형 태그)
-            badge = s2.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx - 0.06), Inches(node_y - 0.04), Inches(0.46), Inches(0.24))
-            badge.fill.solid()
-            badge.fill.fore_color.rgb = badge_rgb
-            badge.line.color.rgb = WHITE
-            badge.line.width = Pt(1)
+            # 좌측 상단 아이콘 배지
+            badge = s2.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx - 0.05), Inches(node_y - 0.04), Inches(0.44), Inches(0.22))
+            badge.fill.solid(); badge.fill.fore_color.rgb = badge_rgb
+            badge.line.color.rgb = WHITE; badge.line.width = Pt(1)
             tf_b = badge.text_frame
             tf_b.margin_left = tf_b.margin_right = tf_b.margin_top = tf_b.margin_bottom = 0
             pb = tf_b.paragraphs[0]
-            pb.text = badge_txt
-            pb.font.size = Pt(7)
-            pb.font.bold = True
-            pb.font.color.rgb = NAVY
-            pb.alignment = PP_ALIGN.CENTER
+            pb.text = badge_txt; pb.font.size = Pt(6.5); pb.font.bold = True; pb.font.color.rgb = NAVY; pb.alignment = PP_ALIGN.CENTER
 
-            node_centers[node.node_id] = (nx + node_w / 2, node_y + node_h / 2)
+            # 도형 외곽 테두리 4방향 앵커 저장 (글자 가림 방지)
+            node_anchors[node.node_id] = {
+                "zone_idx": idx,
+                "cx": nx + node_w / 2,
+                "cy": node_y + node_h / 2,
+                "top": (nx + node_w / 2, node_y + 0.05),
+                "bottom": (nx + node_w / 2, node_y + node_h),
+                "left": (nx, node_y + node_h / 2),
+                "right": (nx + node_w, node_y + node_h / 2),
+            }
 
-    for edge in result.ppt_edges[:12]:
-        if edge.source_id in node_centers and edge.target_id in node_centers:
-            x1, y1 = node_centers[edge.source_id]
-            x2, y2 = node_centers[edge.target_id]
-            conn = s2.shapes.add_connector(1, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
-            conn.line.color.rgb = BLUE_ACCENT; conn.line.width = Pt(1.5)
+    # 직각 꺾은선(Elbow Connector) 및 통신유형별 스타일 적용
+    for e_idx, edge in enumerate(result.ppt_edges[:12]):
+        if edge.source_id in node_anchors and edge.target_id in node_anchors:
+            src = node_anchors[edge.source_id]
+            dst = node_anchors[edge.target_id]
+            l_rgb, l_width, l_dash, _ = LINK_STYLES.get(
+                getattr(edge, "link_type", "it_1g"),
+                LINK_STYLES["it_1g"]
+            )
+
+            # 출발/도착 앵커 자동 선택 (같은 층이면 좌우 수평, 다른 층이면 상하 직각 꺾은선)
+            if src["zone_idx"] == dst["zone_idx"]:
+                if src["cx"] <= dst["cx"]:
+                    x1, y1 = src["right"]
+                    x2, y2 = dst["left"]
+                else:
+                    x1, y1 = src["left"]
+                    x2, y2 = dst["right"]
+                conn_type = MSO_CONNECTOR.STRAIGHT
+            elif src["zone_idx"] < dst["zone_idx"]:
+                x1, y1 = src["bottom"]
+                x2, y2 = dst["top"]
+                conn_type = MSO_CONNECTOR.ELBOW
+            else:
+                x1, y1 = src["top"]
+                x2, y2 = dst["bottom"]
+                conn_type = MSO_CONNECTOR.ELBOW
+
+            conn = s2.shapes.add_connector(conn_type, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
+            conn.line.color.rgb = l_rgb
+            conn.line.width = l_width
+            conn.line.dash_style = l_dash
+
             if edge.label:
-                lbl = s2.shapes.add_textbox(Inches((x1 + x2) / 2 - 0.6), Inches((y1 + y2) / 2 - 0.12), Inches(1.2), Inches(0.24))
-                p_e = lbl.text_frame.paragraphs[0]
-                p_e.text = edge.label; p_e.font.size = Pt(8); p_e.font.bold = True; p_e.font.color.rgb = BLUE_ACCENT; p_e.alignment = PP_ALIGN.CENTER
-
+                # 겹침 방지를 위한 미세 오프셋 및 흰색 알약(Pill) 라벨 배경
+                offset_x = ((e_idx % 3) - 1) * 0.18
+                mid_x = (x1 + x2) / 2 - 0.65 + offset_x
+                mid_y = (y1 + y2) / 2 - 0.11
+                lbl_bg = s2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(mid_x), Inches(mid_y), Inches(1.30), Inches(0.22))
+                lbl_bg.fill.solid(); lbl_bg.fill.fore_color.rgb = WHITE
+                lbl_bg.line.color.rgb = l_rgb; lbl_bg.line.width = Pt(0.75)
+                tf_e = lbl_bg.text_frame
+                tf_e.margin_left = tf_e.margin_right = tf_e.margin_top = tf_e.margin_bottom = 0
+                p_e = tf_e.paragraphs[0]
+                p_e.text = edge.label
+                p_e.font.size = Pt(7.5)
+                p_e.font.bold = True
+                p_e.font.color.rgb = l_rgb
+                p_e.alignment = PP_ALIGN.CENTER
     s3 = prs.slides.add_slide(blank_layout)
     h3 = s3.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.75))
     h3.fill.solid(); h3.fill.fore_color.rgb = NAVY; h3.line.fill.background()
