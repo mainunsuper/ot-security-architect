@@ -641,14 +641,36 @@ if user_msg:
                 """
 
                 response = client.models.generate_content(
-                    model=selected_model_id,
-                    contents=gemini_files + [full_prompt],
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.2,
-                        response_mime_type="application/json",
-                        response_schema=ArchitectureDesignOutput,
-                    ),
+                    fallback_models = [selected_model_id] + [
+                    m for m in ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-argon"] if m != selected_model_id
+                ]
+                response = None
+                last_err = None
+
+                for idx_m, m_id in enumerate(fallback_models):
+                    try:
+                        if idx_m > 0:
+                            st.info(f"⏳ 선택 모델 트래픽 혼잡으로 보조 모델(`{m_id}`)로 자동 전환하여 계속 진행합니다...")
+                        response = client.models.generate_content(
+                            model=m_id,
+                            contents=gemini_files + [full_prompt],
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_PROMPT,
+                                temperature=0.2,
+                                response_mime_type="application/json",
+                                response_schema=ArchitectureDesignOutput,
+                            ),
+                        )
+                        break
+                    except Exception as api_err:
+                        last_err = api_err
+                        if "503" in str(api_err) or "UNAVAILABLE" in str(api_err) or "429" in str(api_err):
+                            time.sleep(2)
+                            continue
+                        raise api_err
+
+                if response is None:
+                    raise last_err
                 )
 
                 result_obj: ArchitectureDesignOutput = response.parsed
