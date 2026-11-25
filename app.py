@@ -199,15 +199,13 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     blank_layout = prs.slide_layouts[6]
 
     NAVY = RGBColor(20, 42, 76)
-    BLUE_ACCENT = RGBColor(0, 102, 204)
-    TEAL_SECURITY = RGBColor(13, 128, 101)
-    ORANGE_NET = RGBColor(214, 112, 24)
     SLATE_ASSET = RGBColor(71, 85, 105)
     ZONE_BG = RGBColor(241, 245, 249)
     ZONE_BORDER = RGBColor(148, 163, 184)
     WHITE = RGBColor(255, 255, 255)
     DARK_TEXT = RGBColor(30, 41, 59)
 
+    # 슬라이드 1: 요약
     s1 = prs.slides.add_slide(blank_layout)
     h1 = s1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.9))
     h1.fill.solid(); h1.fill.fore_color.rgb = NAVY; h1.line.fill.background()
@@ -227,17 +225,13 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
     for zt in result.identified_zones[:6]:
         pz = tf_z.add_paragraph(); pz.text = f"• {zt}"; pz.font.size = Pt(12); pz.font.color.rgb = DARK_TEXT; pz.space_before = Pt(4)
 
-from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
-from pptx.enum.dml import MSO_LINE_DASH_STYLE
-
-    # 슬라이드 2: 편집 가능한 구성도
+    # 슬라이드 2: 편집 가능한 구성도 (직각 꺾은선 + 통신유형 구분 + 솔루션 아이콘)
     s2 = prs.slides.add_slide(blank_layout)
     h2 = s2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.68))
     h2.fill.solid(); h2.fill.fore_color.rgb = NAVY; h2.line.fill.background()
     h2.text_frame.text = "  2. To-Be 보안 아키텍처 구성도 (직각 꺾은선 · 통신유형 구분 · 개별 편집 가능)"
     h2.text_frame.paragraphs[0].font.size = Pt(18); h2.text_frame.paragraphs[0].font.bold = True; h2.text_frame.paragraphs[0].font.color.rgb = WHITE
 
-    # 우측 상단 통신유형 범례(Legend) 바 추가
     LINK_STYLES = {
         "backbone_10g":   (RGBColor(15, 23, 42),   Pt(2.5),  MSO_LINE_DASH_STYLE.SOLID,    "━ 10G 백본"),
         "it_1g":          (RGBColor(37, 99, 235),  Pt(1.5),  MSO_LINE_DASH_STYLE.SOLID,    "━ 1G IT통신"),
@@ -257,9 +251,9 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
 
     zones = result.ppt_zones[:5]
     num_zones = max(len(zones), 1)
-    start_y, total_h, gap_y = 1.05, 6.20, 0.22  # 꺾은선 여백을 위해 층간 간격(gap_y) 확보
+    start_y, total_h, gap_y = 1.05, 6.20, 0.22
     zone_h = (total_h - gap_y * (num_zones - 1)) / num_zones
-    node_anchors = {}  # 상/하/좌/우 테두리 앵커 좌표 저장
+    node_anchors = {}
 
     ICON_STYLES = {
         "firewall": (MSO_SHAPE.OCTAGON,           RGBColor(194, 65, 12),  "FW",    RGBColor(251, 146, 60)),
@@ -282,7 +276,7 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
 
         nodes = zone.nodes[:5]
         n_count = max(len(nodes), 1)
-        area_x, area_w, gap_x = 2.85, 9.85, 0.35  # 수평 연결선 여백 확보
+        area_x, area_w, gap_x = 2.85, 9.85, 0.35
         node_w = min(2.05, (area_w - gap_x * (n_count - 1)) / n_count)
         node_h = min(0.68, zone_h - 0.22)
         node_y = zy + (zone_h - node_h) / 2
@@ -301,7 +295,6 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
             p_n = ns.text_frame.paragraphs[0]
             p_n.text = node.label; p_n.font.size = Pt(8.5); p_n.font.bold = True; p_n.font.color.rgb = WHITE; p_n.alignment = PP_ALIGN.CENTER
 
-            # 좌측 상단 아이콘 배지
             badge = s2.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx - 0.05), Inches(node_y - 0.04), Inches(0.44), Inches(0.22))
             badge.fill.solid(); badge.fill.fore_color.rgb = badge_rgb
             badge.line.color.rgb = WHITE; badge.line.width = Pt(1)
@@ -310,7 +303,6 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
             pb = tf_b.paragraphs[0]
             pb.text = badge_txt; pb.font.size = Pt(6.5); pb.font.bold = True; pb.font.color.rgb = NAVY; pb.alignment = PP_ALIGN.CENTER
 
-            # 도형 외곽 테두리 4방향 앵커 저장 (글자 가림 방지)
             node_anchors[node.node_id] = {
                 "zone_idx": idx,
                 "cx": nx + node_w / 2,
@@ -321,7 +313,6 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
                 "right": (nx + node_w, node_y + node_h / 2),
             }
 
-    # 직각 꺾은선(Elbow Connector) 및 통신유형별 스타일 적용
     for e_idx, edge in enumerate(result.ppt_edges[:12]):
         if edge.source_id in node_anchors and edge.target_id in node_anchors:
             src = node_anchors[edge.source_id]
@@ -331,7 +322,6 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
                 LINK_STYLES["it_1g"]
             )
 
-            # 출발/도착 앵커 자동 선택 (같은 층이면 좌우 수평, 다른 층이면 상하 직각 꺾은선)
             if src["zone_idx"] == dst["zone_idx"]:
                 if src["cx"] <= dst["cx"]:
                     x1, y1 = src["right"]
@@ -355,7 +345,6 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
             conn.line.dash_style = l_dash
 
             if edge.label:
-                # 겹침 방지를 위한 미세 오프셋 및 흰색 알약(Pill) 라벨 배경
                 offset_x = ((e_idx % 3) - 1) * 0.18
                 mid_x = (x1 + x2) / 2 - 0.65 + offset_x
                 mid_y = (y1 + y2) / 2 - 0.11
@@ -370,6 +359,8 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
                 p_e.font.bold = True
                 p_e.font.color.rgb = l_rgb
                 p_e.alignment = PP_ALIGN.CENTER
+
+    # 슬라이드 3: 컴플라이언스 매트릭스 표
     s3 = prs.slides.add_slide(blank_layout)
     h3 = s3.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.75))
     h3.fill.solid(); h3.fill.fore_color.rgb = NAVY; h3.line.fill.background()
