@@ -66,14 +66,14 @@ SYSTEM_PROMPT = """
 [설계 원칙]
 1. Purdue Model(Level 0~4) 계층 구조를 명확히 나누고, Level 3(OT)와 Level 4(IT) 사이에 반드시 Level 3.5(IDMZ)를 배치합니다.
 2. IEC 62443 기준에 따라 기능/중요도별 Zone을 분리하고, Zone 간 통신은 산업용 방화벽 또는 일방향 망연계(Conduit)로 통제합니다.
-3. 사용자가 선택한 [기존 구성 솔루션]은 As-Is 영역에서 최대한 유지/연동하되 취약 구간을 보완하고, [도입 예정 솔루션]은 각 솔루션의 표준 아키텍처 위치(예: Claroty CTD/xDome은 백본 SPAN/TAP 연동, SRA는 IDMZ 경유 원격접속, 일방향 망연계는 IT-OT 경계 등)에 정확히 배치합니다.
-3-1. [세부 솔루션별 표준 배치 규칙]
+3. 사용자가 선택한 [기존 구성 솔루션]은 As-Is 영역에서 최대한 유지/연동하되 취약 구간을 보완하고, [도입 예정 솔루션]은 각 솔루션의 표준 아키텍처 위치에 정확히 배치합니다.
+4. [세부 솔루션별 표준 배치 규칙]
    - Claroty CTD / xDome / Medigate: 코어 및 주요 L2/L3 백본 스위치에서 SPAN/TAP 미러링(점선 `-.->`)으로 트래픽을 수동 수집하도록 배치합니다.
    - Claroty Edge: SPAN 포트 구성이 어려운 원격지 변전소, 소규모 PLC/RTU 구간, 또는 독립 의료기기 네트워크에 배치하여 능동(Active) 수집 후 중앙 서버(CTD/xDome)로 전송하게 그립니다.
-   - Claroty SRA / xSA: 반드시 Level 3.5(IDMZ)에 배치하며, 외부 벤더나 의료기기 유지보수 인력이 SRA를 거쳐 승인된 자산(PLC, HMI, 의료장비)에만 접근하도록 구성합니다.
+   - Claroty SRA / xSA: 반드시 Level 3.5(IDMZ)에 배치하며, 외부 벤더나 유지보수 인력이 SRA를 거쳐 승인된 자산(PLC, HMI, 의료장비)에만 접근하도록 구성합니다.
    - 일방향 망연계(Data Diode): Level 3(OT 제어망)에서 Level 4(IT 업무망) 또는 외부 관제센터로 데이터를 보낼 때만 단방향 화살표(`-->`)로 배치합니다.
    - Trellix / 화이트리스트 백신 및 매체제어: Level 2~3의 HMI, EWS(엔지니어링 워크스테이션), SCADA 서버에 적용된 것으로 표기합니다.
-4. 컴플라이언스 매트릭스에는 도입 예정 솔루션이 구체적으로 어떤 규제 조항을 해결하는지 명시합니다.
+5. 컴플라이언스 매트릭스에는 도입 예정 솔루션이 구체적으로 어떤 규제 조항을 해결하는지 명시합니다.
 
 [Mermaid 코드 작성 규칙]
 - 반드시 `flowchart TB` 방향을 사용하며, 각 계층과 Zone을 `subgraph`로 묶습니다.
@@ -93,7 +93,7 @@ def render_mermaid(code: str):
     components.html(html_code, height=650, scrolling=True)
 
 # ==========================================
-# 3. 좌측 사이드바: 자료, 규제, 솔루션 선택 UI
+# 3. 좌측 사이드바: 자료, 규제, 솔루션 선택 및 직접 입력 UI
 # ==========================================
 OT_SOLUTIONS_LIST = [
     # [공통 - 자산 가시성 및 위협 탐지]
@@ -132,20 +132,31 @@ with st.sidebar:
     
     st.header("2. 보안 솔루션 구성 선택")
     current_solutions = st.multiselect(
-    "현재 구성되어 있는 보안 솔루션 (As-Is)",
-    OT_SOLUTIONS_LIST,
-    default=["일반 IT/경계 방화벽 (Palo Alto / Fortinet 등)"],
-    help="고객사 현장에 이미 도입되어 운영 중인 솔루션을 선택하세요."
+        "현재 구성되어 있는 보안 솔루션 (As-Is)",
+        OT_SOLUTIONS_LIST,
+        default=["일반 IT/경계 방화벽 (Palo Alto / Fortinet 등)"],
+        help="고객사 현장에 이미 도입되어 운영 중인 솔루션을 선택하세요."
     )
+    custom_current = st.text_input(
+        "기타 기존 보유 솔루션 직접 입력 (선택)", 
+        placeholder="예: 시스코 ISE, 노후화 방화벽 등 (쉼표로 구분)"
+    )
+
+    st.markdown("---")
+
     planned_solutions = st.multiselect(
-    "도입 예정인 보안 솔루션 (To-Be)",
-    [s for s in OT_SOLUTIONS_LIST if s != "없음 (신규 구축)"],
-    default=[
-        "산업용 방화벽 (FortiGate Rugged / Hirschmann / Stratix)",
-        "Claroty CTD (OT 수동형 자산 가시성/위협 탐지)",
-        "Claroty SRA / xSA (OT 전용 안전한 원격접속)"
-    ],
-    help="이번 사업을 통해 신규 도입하거나 제안할 솔루션을 선택하세요."
+        "도입 예정인 보안 솔루션 (To-Be)",
+        [s for s in OT_SOLUTIONS_LIST if s != "없음 (신규 구축)"],
+        default=[
+            "산업용 방화벽 (FortiGate Rugged / Hirschmann / Stratix)",
+            "Claroty CTD (OT 수동형 자산 가시성/위협 탐지)",
+            "Claroty SRA / xSA (OT 전용 안전한 원격접속)"
+        ],
+        help="이번 사업을 통해 신규 도입하거나 제안할 솔루션을 선택하세요."
+    )
+    custom_planned = st.text_input(
+        "기타 도입 예정 솔루션 직접 입력 (선택)", 
+        placeholder="예: 자사 특화 OT 관제, 신규 IDS 등 (쉼표로 구분)"
     )
 
     st.header("3. 규제 및 추가 요건")
@@ -161,7 +172,16 @@ with st.sidebar:
 # 4. 메인 화면 실행 로직
 # ==========================================
 if run_btn:
-    if not rfp_file and not asis_file and not extra_notes and not planned_solutions:
+    # 드롭다운 선택 항목과 직접 입력 항목 병합
+    all_current = list(current_solutions)
+    if custom_current.strip():
+        all_current.extend([item.strip() for item in custom_current.split(",") if item.strip()])
+
+    all_planned = list(planned_solutions)
+    if custom_planned.strip():
+        all_planned.extend([item.strip() for item in custom_planned.split(",") if item.strip()])
+
+    if not rfp_file and not asis_file and not extra_notes and not all_planned:
         st.warning("분석할 파일이나 도입 예정 솔루션, 추가 요구사항 중 최소 1가지를 입력해 주세요.")
         st.stop()
 
@@ -189,8 +209,8 @@ if run_btn:
             prompt = f"""
             제공된 자료와 아래 선택 조건을 바탕으로 OT 보안 To-Be 아키텍처를 설계해 주세요.
             - 적용 규제 및 표준: {', '.join(regulations) if regulations else 'IEC 62443 기본 기준'}
-            - 현재 보유 중인 솔루션 (As-Is): {', '.join(current_solutions) if current_solutions else '정보 없음'}
-            - 신규 도입 예정 솔루션 (To-Be): {', '.join(planned_solutions) if planned_solutions else '규제 충족에 필요한 표준 솔루션 자동 추천'}
+            - 현재 보유 중인 솔루션 (As-Is): {', '.join(all_current) if all_current else '정보 없음'}
+            - 신규 도입 예정 솔루션 (To-Be): {', '.join(all_planned) if all_planned else '규제 충족에 필요한 표준 솔루션 자동 추천'}
             - 추가 현장 특이사항: {extra_notes if extra_notes else '없음'}
             """
             contents = uploaded_gemini_files + [prompt]
