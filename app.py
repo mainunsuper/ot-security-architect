@@ -108,6 +108,7 @@ class DiagramNode(BaseModel):
     node_id: str = Field(description="영문 고유 ID (예: FW_OT, CLAROTY_CTD)")
     label: str = Field(description="도형 안에 표시될 짧은 장비/자산군 이름")
     node_type: str = Field(description="장비 유형: 'security'(보안솔루션), 'network'(방화벽/스위치/망연계), 'asset'(식별된 IP대역 자산군/서버/설비) 중 택1")
+    icon_type: str = Field(description="아이콘 유형: 'firewall'(방화벽/스위치), 'diode'(일방향망연계), 'sensor'(Claroty CTD/xDome/Medigate/Edge), 'remote'(SRA/ZTNA/점프호스트), 'endpoint'(백신/매체제어/PAM), 'plc'(PLC/RTU/의료기기), 'server'(SCADA/HMI/업무서버/클라우드) 중 택1")
 
 class DiagramZone(BaseModel):
     zone_name: str = Field(description="계층/세그먼트 구역 이름")
@@ -253,15 +254,53 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
         node_h = min(0.72, zone_h - 0.20)
         node_y = zy + (zone_h - node_h) / 2
 
+# 아이콘 유형별 스타일 매핑 테이블 (도형모양, 배경색, 배지텍스트, 배지색상)
+        ICON_STYLES = {
+            "firewall": (MSO_SHAPE.OCTAGON, RGBColor(194, 65, 12), "FW", RGBColor(251, 146, 60)),
+            "diode":    (MSO_SHAPE.RIGHT_ARROW, RGBColor(3, 105, 161), "1-WAY", RGBColor(56, 189, 248)),
+            "sensor":   (MSO_SHAPE.HEXAGON, RGBColor(13, 128, 101), "MON", RGBColor(52, 211, 153)),
+            "remote":   (MSO_SHAPE.ROUNDED_RECTANGLE, RGBColor(109, 40, 217), "SRA", RGBColor(192, 132, 252)),
+            "endpoint": (MSO_SHAPE.PLAQUE, RGBColor(15, 118, 110), "EPP", RGBColor(45, 212, 191)),
+            "plc":      (MSO_SHAPE.BEVEL, RGBColor(71, 85, 105), "OT", RGBColor(148, 163, 184)),
+            "server":   (MSO_SHAPE.RECTANGLE, RGBColor(51, 65, 85), "SRV", RGBColor(148, 163, 184)),
+        }
+
         for n_idx, node in enumerate(nodes):
             nx = area_x + n_idx * (node_w + gap_x)
-            ns = s2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(nx), Inches(node_y), Inches(node_w), Inches(node_h))
+            shape_type, fill_rgb, badge_txt, badge_rgb = ICON_STYLES.get(
+                getattr(node, "icon_type", "server"),
+                (MSO_SHAPE.ROUNDED_RECTANGLE, SLATE_ASSET, "SYS", ZONE_BORDER)
+            )
+
+            # 메인 장비 도형
+            ns = s2.shapes.add_shape(shape_type, Inches(nx), Inches(node_y + 0.06), Inches(node_w), Inches(node_h - 0.06))
             ns.fill.solid()
-            ns.fill.fore_color.rgb = TEAL_SECURITY if node.node_type == "security" else (ORANGE_NET if node.node_type == "network" else SLATE_ASSET)
-            ns.line.color.rgb = WHITE; ns.line.width = Pt(1)
+            ns.fill.fore_color.rgb = fill_rgb
+            ns.line.color.rgb = WHITE
+            ns.line.width = Pt(1.2)
             ns.text_frame.word_wrap = True
             p_n = ns.text_frame.paragraphs[0]
-            p_n.text = node.label; p_n.font.size = Pt(9.5); p_n.font.bold = True; p_n.font.color.rgb = WHITE; p_n.alignment = PP_ALIGN.CENTER
+            p_n.text = node.label
+            p_n.font.size = Pt(9)
+            p_n.font.bold = True
+            p_n.font.color.rgb = WHITE
+            p_n.alignment = PP_ALIGN.CENTER
+
+            # 좌측 상단 특징 아이콘 배지 (원형 태그)
+            badge = s2.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx - 0.06), Inches(node_y - 0.04), Inches(0.46), Inches(0.24))
+            badge.fill.solid()
+            badge.fill.fore_color.rgb = badge_rgb
+            badge.line.color.rgb = WHITE
+            badge.line.width = Pt(1)
+            tf_b = badge.text_frame
+            tf_b.margin_left = tf_b.margin_right = tf_b.margin_top = tf_b.margin_bottom = 0
+            pb = tf_b.paragraphs[0]
+            pb.text = badge_txt
+            pb.font.size = Pt(7)
+            pb.font.bold = True
+            pb.font.color.rgb = NAVY
+            pb.alignment = PP_ALIGN.CENTER
+
             node_centers[node.node_id] = (nx + node_w / 2, node_y + node_h / 2)
 
     for edge in result.ppt_edges[:12]:
