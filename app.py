@@ -642,7 +642,7 @@ if user_msg:
                 """
 
                 # 503 트래픽 폭주 대비 자동 재시도 및 보조 모델 우회(Fallback) 로직
-                all_candidates = ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-argon"]
+                all_candidates = ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-hydrogen"]
                 fallback_models = [selected_model_id] + [m for m in all_candidates if m != selected_model_id]
                 response = None
                 last_err = None
