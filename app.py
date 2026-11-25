@@ -240,7 +240,7 @@ def build_editable_pptx(result: ArchitectureDesignOutput) -> bytes:
         "it_1g":          (RGBColor(37, 99, 235),  Pt(1.5),  MSO_LINE_DASH_STYLE.SOLID,    "━ 1G IT통신"),
         "ot_control":     (RGBColor(5, 150, 105),  Pt(1.75), MSO_LINE_DASH_STYLE.SOLID,    "━ OT 제어망"),
         "span_mirror":    (RGBColor(124, 58, 237), Pt(1.5),  MSO_LINE_DASH_STYLE.DASH,     "┄ SPAN 미러링"),
-        "unidirectional": (RGBColor(234, 88, 12),  Pt(1.75), MSO_LINE_DASH_STYLE.SYS_DOT,  "┈ 일방향/통제"),
+        "unidirectional": (RGBColor(234, 88, 12),  Pt(1.75), MSO_LINE_DASH_STYLE.ROUND_DOT,  "┈ 일방향/통제"),
     }
     leg_x = 5.4
     for _, (l_rgb, _, _, l_txt) in LINK_STYLES.items():
